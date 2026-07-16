@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+  <meta name="theme-color" content="#12345a">
+  <meta name="description" content="Application hors ligne de scan QR et de vérification GPS des centres de vote.">
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="styles.css">
+  <title>ELMS Scan Centres</title>
+</head>
+<body>
+<header class="topbar">
+  <div>
+    <h1>ELMS — livraison des centres</h1>
+    <p>Scan QR, contrôle GPS et fonctionnement hors ligne</p>
+  </div>
+  <button id="installBtn" class="btn btn-light hidden">Installer</button>
+</header>
+
+<main class="container">
+  <section class="network-bar" id="networkBar">
+    <span id="networkText">Initialisation…</span>
+    <span id="queueBadge">0 en attente</span>
+  </section>
+
+  <section class="kpi-grid">
+    <article class="kpi"><strong id="kTotal">—</strong><span>Centres du référentiel</span></article>
+    <article class="kpi"><strong id="kScannes">0</strong><span>Centres scannés</span></article>
+    <article class="kpi"><strong id="kConformes">0</strong><span>Scans conformes</span></article>
+    <article class="kpi"><strong id="kAnomalies">0</strong><span>À vérifier / anomalies</span></article>
+  </section>
+
+  <div id="message" class="message hidden"></div>
+
+  <section class="card">
+    <div class="section-title">
+      <span class="step">1</span>
+      <h2>Scanner le QR code du centre</h2>
+    </div>
+
+    <div id="reader" class="reader"></div>
+
+    <div class="actions">
+      <button id="startScanBtn" class="btn btn-primary">Démarrer la caméra</button>
+      <button id="stopScanBtn" class="btn btn-outline hidden">Arrêter la caméra</button>
+    </div>
+
+    <label class="field">
+      <span>Ou coller le contenu du QR code</span>
+      <textarea id="manualQr" rows="3" placeholder="ELECTIONS2026|CENTRE=...|DEP=...|COM=...|SEC=..."></textarea>
+    </label>
+
+    <button id="lookupBtn" class="btn btn-secondary">Identifier le centre</button>
+  </section>
+
+  <section id="centreCard" class="card hidden">
+    <div class="section-title">
+      <span class="step">2</span>
+      <h2>Centre identifié</h2>
+    </div>
+
+    <h3 id="centreName" class="centre-name"></h3>
+    <div id="centreAdmin" class="meta-grid"></div>
+
+    <div class="gps-grid">
+      <article class="gps-panel">
+        <h4>Coordonnées officielles</h4>
+        <dl>
+          <div><dt>Latitude</dt><dd id="refLat">—</dd></div>
+          <div><dt>Longitude</dt><dd id="refLon">—</dd></div>
+        </dl>
+      </article>
+
+      <article class="gps-panel">
+        <h4>Coordonnées du scan</h4>
+        <dl>
+          <div><dt>Latitude</dt><dd id="scanLat">—</dd></div>
+          <div><dt>Longitude</dt><dd id="scanLon">—</dd></div>
+          <div><dt>Précision</dt><dd id="scanAccuracy">—</dd></div>
+        </dl>
+      </article>
+    </div>
+
+    <div id="gpsResult" class="gps-result neutral">
+      Acquisition de la position GPS…
+    </div>
+
+    <button id="refreshGpsBtn" class="btn btn-outline">Actualiser le GPS</button>
+
+    <div class="section-title spaced">
+      <span class="step">3</span>
+      <h2>Confirmation de la livraison</h2>
+    </div>
+
+    <label class="field">
+      <span>Type d’opération</span>
+      <select id="operationType">
+        <option value="RECEPTION_COMPLETE">Réception complète du matériel</option>
+        <option value="RECEPTION_PARTIELLE">Réception partielle</option>
+        <option value="CONTROLE">Contrôle de livraison</option>
+      </select>
+    </label>
+
+    <label class="check-field">
+      <input type="checkbox" id="deliveryComplete" checked>
+      <span>Le matériel destiné au centre a été entièrement reçu</span>
+    </label>
+
+    <label class="field">
+      <span>Nom du réceptionnaire</span>
+      <input id="recipientName" autocomplete="name">
+    </label>
+
+    <label class="field">
+      <span>Téléphone du réceptionnaire</span>
+      <input id="recipientPhone" inputmode="tel" autocomplete="tel">
+    </label>
+
+    <label class="field">
+      <span>Observation</span>
+      <textarea id="observation" rows="3"></textarea>
+    </label>
+
+    <button id="saveBtn" class="btn btn-success">Enregistrer le scan</button>
+    <button id="resetBtn" class="btn btn-outline">Scanner un autre centre</button>
+  </section>
+
+  <section class="card">
+    <div class="section-title">
+      <span class="step">4</span>
+      <h2>Données enregistrées sur le téléphone</h2>
+    </div>
+    <p class="muted">Les scans restent disponibles sans Internet. Ils pourront être synchronisés lorsque le backend sera connecté.</p>
+    <div class="actions">
+      <button id="exportCsvBtn" class="btn btn-outline">Exporter les scans en CSV</button>
+      <button id="exportJsonBtn" class="btn btn-outline">Exporter en JSON</button>
+      <button id="clearBtn" class="btn btn-danger">Effacer les scans locaux</button>
+    </div>
+    <div id="recentScans" class="recent-list"></div>
+  </section>
+</main>
+
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
