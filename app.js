@@ -6,17 +6,48 @@ const $=id=>document.getElementById(id);
 document.addEventListener('DOMContentLoaded', init);
 
 async function init(){
-  db=await openDb();
-  await loadReference();
-  bindEvents();
-  updateNetwork();
-  await refreshDashboard();
-  await refreshRecent();
-  getGps();
-  if('serviceWorker' in navigator) navigator.serviceWorker.register('./service-worker.js');
-  window.addEventListener('online', updateNetwork);
-  window.addEventListener('offline', updateNetwork);
-  window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferredPrompt=e;$('installBtn').classList.remove('hidden')});
+  try{
+    db=await openDb();
+    bindEvents();
+    updateNetwork();
+
+    const total=await loadReference();
+    $('kTotal').textContent=total;
+
+    await refreshDashboard();
+    await refreshRecent();
+    getGps();
+
+    if('serviceWorker' in navigator){
+      try{
+        await navigator.serviceWorker.register('./service-worker.js?v=1.1');
+      }catch(e){
+        console.warn('Service worker non enregistré :',e);
+      }
+    }
+
+    window.addEventListener('online',updateNetwork);
+    window.addEventListener('offline',updateNetwork);
+
+    window.addEventListener('beforeinstallprompt',e=>{
+      e.preventDefault();
+      deferredPrompt=e;
+      $('installBtn').classList.remove('hidden');
+    });
+
+    $('networkText').textContent=
+      navigator.onLine
+        ? 'En ligne — référentiel chargé'
+        : 'Hors ligne — référentiel local chargé';
+
+  }catch(e){
+    console.error(e);
+    $('networkText').textContent='Erreur de chargement';
+    showMessage(
+      'Impossible de charger le référentiel des centres : '+(e.message||e),
+      'bad'
+    );
+  }
 }
 function bindEvents(){
   $('startScanBtn').onclick=startScanner;$('stopScanBtn').onclick=stopScanner;
@@ -35,12 +66,66 @@ function putMany(store,items){return new Promise((res,rej)=>{const t=db.transact
 function add(store,item){return new Promise((res,rej)=>{const r=tx(store,'readwrite').add(item);r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)})}
 function clearStore(store){return new Promise((res,rej)=>{const r=tx(store,'readwrite').clear();r.onsuccess=()=>res();r.onerror=()=>rej(r.error)})}
 async function loadReference(){
-  let local=await getAll(CENTRES_STORE);
+  let local=[];
+
   try{
-    const response=await fetch('./centres.json',{cache:'no-store'});
-    if(response.ok){const data=await response.json();await clearStore(CENTRES_STORE);await putMany(CENTRES_STORE,data.centres);local=data.centres}
-  }catch(e){}
-  $('kTotal').textContent=local.length;
+    local=await getAll(CENTRES_STORE);
+  }catch(e){
+    console.warn('Lecture IndexedDB impossible :',e);
+  }
+
+  try{
+    const url='./centres.json?v=2026.1';
+    const response=await fetch(url,{cache:'no-store'});
+
+    if(!response.ok){
+      throw new Error(
+        'centres.json introuvable — HTTP '+response.status
+      );
+    }
+
+    const texte=await response.text();
+    let data;
+
+    try{
+      data=JSON.parse(texte);
+    }catch(e){
+      throw new Error(
+        'centres.json n’est pas un JSON valide'
+      );
+    }
+
+    if(
+      !data ||
+      !Array.isArray(data.centres)
+    ){
+      throw new Error(
+        'Structure centres.json invalide'
+      );
+    }
+
+    await clearStore(CENTRES_STORE);
+    await putMany(CENTRES_STORE,data.centres);
+    local=data.centres;
+
+  }catch(e){
+    console.warn(
+      'Chargement réseau impossible, utilisation du cache local :',
+      e
+    );
+
+    if(!local.length){
+      throw e;
+    }
+  }
+
+  if(!local.length){
+    throw new Error(
+      'Aucun centre n’est disponible dans le référentiel.'
+    );
+  }
+
+  return local.length;
 }
 async function startScanner(){
   hideMessage();
