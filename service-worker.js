@@ -1,4 +1,4 @@
-const CACHE='elms-offline-v1.1.0';
+const CACHE='elms-offline-v2.0';
 const FILES=[
   './',
   './index.html?v=1.1',
