@@ -1,4 +1,4 @@
-const API_URL='REMPLACER_PAR_URL_APPS_SCRIPT_EXEC';
+const API_URL='https://script.google.com/macros/s/AKfycbzYc9Iw-JjVnL3snbHEVmPF2bzUBmmWVpMhDBLVPGNM53CJeDClmpMibznfL-47leHt/exec';
 const DB_NAME='elms_offline_v2', DB_VERSION=1, CENTRES_STORE='centres', SCANS_STORE='scans';
 const GPS_DEFAULT_RADIUS=300, GPS_WARN_FACTOR=2;
 let db, scanner=null, currentCentre=null, currentQr='', currentGps=null, deferredPrompt=null;
