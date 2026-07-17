@@ -1,6 +1,6 @@
-const DB_NAME='elms_offline_v1_2', DB_VERSION=1, CENTRES_STORE='centres', SCANS_STORE='scans';
+const DB_NAME='elms_offline_v2', DB_VERSION=2, CENTRES_STORE='centres', SCANS_STORE='scans', CONVOIS_STORE='convois', POSITIONS_STORE='positions';
 const GPS_DEFAULT_RADIUS=300, GPS_WARN_FACTOR=2;
-let db, scanner=null, currentCentre=null, currentQr='', currentGps=null, deferredPrompt=null;
+let db, scanner=null, currentCentre=null, currentQr='', currentGps=null, deferredPrompt=null, activeConvoy=null, gpsWatchId=null, missionTimer=null;
 
 const $=id=>document.getElementById(id);
 document.addEventListener('DOMContentLoaded', init);
@@ -16,6 +16,7 @@ async function init(){
 
     await refreshDashboard();
     await refreshRecent();
+    await loadActiveConvoy();
     getGps();
 
     if('serviceWorker' in navigator){
@@ -53,13 +54,28 @@ function bindEvents(){
   $('startScanBtn').onclick=startScanner;$('stopScanBtn').onclick=stopScanner;
   $('lookupBtn').onclick=()=>processQr($('manualQr').value.trim());
   $('refreshGpsBtn').onclick=getGps;$('saveBtn').onclick=saveScan;$('resetBtn').onclick=resetForm;
-  $('exportCsvBtn').onclick=exportCsv;$('exportJsonBtn').onclick=exportJson;$('clearBtn').onclick=clearScans;
+  $('exportCsvBtn').onclick=exportCsv;
+  $('exportJsonBtn').onclick=exportJson;
+  $('exportConvoyBtn').onclick=exportConvoyJournal;
+  $('clearBtn').onclick=clearScans;
+  $('startMissionBtn').onclick=startMission;
+  $('stopMissionBtn').onclick=stopMission;
+  $('recordPositionBtn').onclick=recordConvoyPosition;
   $('installBtn').onclick=installApp;
 }
 async function installApp(){if(!deferredPrompt)return;deferredPrompt.prompt();await deferredPrompt.userChoice;deferredPrompt=null;$('installBtn').classList.add('hidden')}
 function updateNetwork(){const online=navigator.onLine;$('networkBar').classList.toggle('online',online);$('networkText').textContent=online?'En ligne — application prête':'Hors ligne — les données restent sur ce téléphone';updateQueue()}
-async function updateQueue(){const scans=await getAll(SCANS_STORE);const pending=scans.filter(s=>!s.synced).length;$('queueBadge').textContent=`${pending} en attente`}
-function openDb(){return new Promise((resolve,reject)=>{const r=indexedDB.open(DB_NAME,DB_VERSION);r.onupgradeneeded=e=>{const d=e.target.result;if(!d.objectStoreNames.contains(CENTRES_STORE))d.createObjectStore(CENTRES_STORE,{keyPath:'cleCentre'});if(!d.objectStoreNames.contains(SCANS_STORE))d.createObjectStore(SCANS_STORE,{keyPath:'localId',autoIncrement:true})};r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error)})}
+async function updateQueue(){
+  const scans=await getAll(SCANS_STORE);
+  const positions=await getAll(POSITIONS_STORE);
+  const pendingScans=scans.filter(s=>!s.synced).length;
+  const pendingPositions=positions.filter(p=>!p.synced).length;
+  $('queueBadge').textContent=`${pendingScans} scan(s), ${pendingPositions} GPS en attente`;
+}
+function openDb(){return new Promise((resolve,reject)=>{const r=indexedDB.open(DB_NAME,DB_VERSION);r.onupgradeneeded=e=>{const d=e.target.result;if(!d.objectStoreNames.contains(CENTRES_STORE))d.createObjectStore(CENTRES_STORE,{keyPath:'cleCentre'});
+        if(!d.objectStoreNames.contains(SCANS_STORE))d.createObjectStore(SCANS_STORE,{keyPath:'localId',autoIncrement:true});
+        if(!d.objectStoreNames.contains(CONVOIS_STORE))d.createObjectStore(CONVOIS_STORE,{keyPath:'convoiId'});
+        if(!d.objectStoreNames.contains(POSITIONS_STORE))d.createObjectStore(POSITIONS_STORE,{keyPath:'localId',autoIncrement:true})};r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error)})}
 function tx(store,mode='readonly'){return db.transaction(store,mode).objectStore(store)}
 function getAll(store){return new Promise((res,rej)=>{const r=tx(store).getAll();r.onsuccess=()=>res(r.result||[]);r.onerror=()=>rej(r.error)})}
 function putMany(store,items){return new Promise((res,rej)=>{const t=db.transaction(store,'readwrite'),s=t.objectStore(store);items.forEach(x=>s.put(x));t.oncomplete=()=>res();t.onerror=()=>rej(t.error)})}
@@ -183,9 +199,268 @@ function haversine(a,b,c,d){const R=6371000,x=Math.PI/180,da=(c-a)*x,do_=(d-b)*x
 async function saveScan(){
   if(!currentCentre){showMessage('Aucun centre identifié.','bad');return}
   const gps=calculateGpsStatus();
-  const record={scanId:crypto.randomUUID?crypto.randomUUID():Date.now()+'-'+Math.random(),timestamp:new Date().toISOString(),qrValue:currentQr,centreUid:currentCentre.uid,cleCentre:currentCentre.cleCentre,nomCentre:currentCentre.nomCentre,departement:currentCentre.departement,commune:currentCentre.commune,section:currentCentre.section,latitudeReference:currentCentre.latitude,longitudeReference:currentCentre.longitude,latitudeScan:currentGps?.latitude??null,longitudeScan:currentGps?.longitude??null,precisionGps_m:currentGps?.accuracy??null,distanceCentre_m:gps.distance,verificationGps:gps.status,typeOperation:$('operationType').value,livraisonComplete:$('deliveryComplete').checked?'OUI':'NON',nomReceptionnaire:$('recipientName').value.trim(),telephoneReceptionnaire:$('recipientPhone').value.trim(),observation:$('observation').value.trim(),appareil:navigator.userAgent,synced:false};
-  await add(SCANS_STORE,record);showMessage('Scan enregistré sur le téléphone.','ok');await refreshDashboard();await refreshRecent();updateQueue();setTimeout(resetForm,1800)
+  const record={scanId:crypto.randomUUID?crypto.randomUUID():Date.now()+'-'+Math.random(),timestamp:new Date().toISOString(),qrValue:currentQr,centreUid:currentCentre.uid,cleCentre:currentCentre.cleCentre,nomCentre:currentCentre.nomCentre,departement:currentCentre.departement,commune:currentCentre.commune,section:currentCentre.section,latitudeReference:currentCentre.latitude,longitudeReference:currentCentre.longitude,latitudeScan:currentGps?.latitude??null,longitudeScan:currentGps?.longitude??null,precisionGps_m:currentGps?.accuracy??null,distanceCentre_m:gps.distance,verificationGps:gps.status,typeOperation:$('operationType').value,livraisonComplete:$('deliveryComplete').checked?'OUI':'NON',nomReceptionnaire:$('recipientName').value.trim(),telephoneReceptionnaire:$('recipientPhone').value.trim(),observation:$('observation').value.trim(),appareil:navigator.userAgent,
+    convoiId:activeConvoy?.convoiId||'',
+    nomConvoi:activeConvoy?.nomConvoi||'',
+    responsableConvoi:activeConvoy?.responsable||'',
+    synced:false};
+  await add(SCANS_STORE,record);
+  showMessage('Scan enregistré sur le téléphone.','ok');
+  await refreshDashboard();
+  await refreshRecent();
+  await refreshConvoyStats();
+  updateQueue();
+  setTimeout(resetForm,1800)
 }
+
+async function loadActiveConvoy(){
+  const convois=await getAll(CONVOIS_STORE);
+  activeConvoy=convois.find(c=>c.actif===true)||null;
+  renderActiveConvoy();
+  if(activeConvoy){
+    startGpsTracking();
+    startMissionClock();
+  }
+}
+
+function putOne(store,item){
+  return new Promise((resolve,reject)=>{
+    const r=tx(store,'readwrite').put(item);
+    r.onsuccess=()=>resolve(r.result);
+    r.onerror=()=>reject(r.error);
+  });
+}
+
+async function startMission(){
+  const convoiId=$('convoyId').value.trim();
+  const nomConvoi=$('convoyName').value.trim();
+
+  if(!convoiId||!nomConvoi){
+    showMessage('Identifiant et nom du convoi obligatoires.','bad');
+    return;
+  }
+
+  const existing=await getAll(CONVOIS_STORE);
+  for(const item of existing){
+    if(item.actif===true){
+      item.actif=false;
+      await putOne(CONVOIS_STORE,item);
+    }
+  }
+
+  activeConvoy={
+    convoiId,
+    nomConvoi,
+    departement:$('convoyDepartment').value.trim(),
+    commune:$('convoyCommune').value.trim(),
+    responsable:$('convoyManager').value.trim(),
+    telephone:$('convoyPhone').value.trim(),
+    dateDebut:new Date().toISOString(),
+    dateFin:'',
+    actif:true,
+    statut:'EN_COURS'
+  };
+
+  await putOne(CONVOIS_STORE,activeConvoy);
+  renderActiveConvoy();
+  startGpsTracking();
+  startMissionClock();
+  await recordConvoyPosition();
+  showMessage('Mission du convoi démarrée.','ok');
+}
+
+async function stopMission(){
+  if(!activeConvoy)return;
+  if(!confirm('Clôturer la mission de ce convoi ?'))return;
+
+  activeConvoy.actif=false;
+  activeConvoy.statut='TERMINEE';
+  activeConvoy.dateFin=new Date().toISOString();
+
+  await putOne(CONVOIS_STORE,activeConvoy);
+  stopGpsTracking();
+
+  const nom=activeConvoy.nomConvoi;
+  activeConvoy=null;
+  renderActiveConvoy();
+  showMessage('Mission clôturée : '+nom,'ok');
+}
+
+function renderActiveConvoy(){
+  const actif=Boolean(activeConvoy);
+
+  $('activeConvoyEmpty').classList.toggle('hidden',actif);
+  $('activeConvoyPanel').classList.toggle('hidden',!actif);
+
+  if(!actif)return;
+
+  $('activeConvoyTitle').textContent=
+    activeConvoy.convoiId+' — '+activeConvoy.nomConvoi;
+
+  $('activeConvoyMeta').innerHTML=[
+    ['Département',activeConvoy.departement||'—'],
+    ['Commune',activeConvoy.commune||'—'],
+    ['Responsable',activeConvoy.responsable||'—'],
+    ['Téléphone',activeConvoy.telephone||'—']
+  ].map(x=>
+    `<div class="meta-item"><strong>${escapeHtml(x[0])}</strong>${escapeHtml(x[1])}</div>`
+  ).join('');
+
+  refreshConvoyStats();
+}
+
+function startGpsTracking(){
+  stopGpsTracking();
+
+  if(!navigator.geolocation||!activeConvoy)return;
+
+  gpsWatchId=navigator.geolocation.watchPosition(
+    async position=>{
+      currentGps={
+        latitude:position.coords.latitude,
+        longitude:position.coords.longitude,
+        accuracy:Math.round(position.coords.accuracy),
+        speed:position.coords.speed,
+        heading:position.coords.heading,
+        timestamp:new Date().toISOString()
+      };
+
+      renderGps();
+
+      const last=Number(localStorage.getItem('elms_last_gps_save')||0);
+
+      if(Date.now()-last>=60000){
+        await saveConvoyPosition(currentGps);
+        localStorage.setItem('elms_last_gps_save',String(Date.now()));
+      }
+    },
+    error=>console.warn('Suivi GPS du convoi :',error),
+    {
+      enableHighAccuracy:true,
+      maximumAge:10000,
+      timeout:30000
+    }
+  );
+}
+
+function stopGpsTracking(){
+  if(gpsWatchId!==null&&navigator.geolocation){
+    navigator.geolocation.clearWatch(gpsWatchId);
+  }
+
+  gpsWatchId=null;
+
+  if(missionTimer){
+    clearInterval(missionTimer);
+    missionTimer=null;
+  }
+}
+
+async function recordConvoyPosition(){
+  if(!activeConvoy){
+    showMessage('Aucun convoi actif.','warn');
+    return;
+  }
+
+  if(!currentGps){
+    showMessage('Position GPS indisponible.','warn');
+    getGps();
+    return;
+  }
+
+  await saveConvoyPosition(currentGps);
+  await refreshConvoyStats();
+  showMessage('Position du convoi enregistrée.','ok');
+}
+
+async function saveConvoyPosition(gps){
+  if(!activeConvoy||!gps)return;
+
+  await add(POSITIONS_STORE,{
+    convoiId:activeConvoy.convoiId,
+    nomConvoi:activeConvoy.nomConvoi,
+    timestamp:gps.timestamp||new Date().toISOString(),
+    latitude:gps.latitude,
+    longitude:gps.longitude,
+    precisionGps_m:gps.accuracy??null,
+    vitesse_m_s:gps.speed??null,
+    direction:gps.heading??null,
+    synced:false
+  });
+
+  await refreshConvoyStats();
+  updateQueue();
+}
+
+function startMissionClock(){
+  if(missionTimer)clearInterval(missionTimer);
+  missionTimer=setInterval(refreshConvoyStats,30000);
+}
+
+async function refreshConvoyStats(){
+  if(!activeConvoy)return;
+
+  const scans=await getAll(SCANS_STORE);
+  const positions=await getAll(POSITIONS_STORE);
+
+  const delivered=new Set(
+    scans
+      .filter(s=>
+        s.convoiId===activeConvoy.convoiId&&
+        s.livraisonComplete==='OUI'
+      )
+      .map(s=>s.cleCentre)
+  );
+
+  const convoyPositions=positions.filter(
+    p=>p.convoiId===activeConvoy.convoiId
+  );
+
+  const duration=Math.max(
+    0,
+    Math.round(
+      (Date.now()-new Date(activeConvoy.dateDebut).getTime())/60000
+    )
+  );
+
+  $('convoyDelivered').textContent=delivered.size;
+  $('convoyPositions').textContent=convoyPositions.length;
+  $('convoyDuration').textContent=duration+' min';
+}
+
+async function exportConvoyJournal(){
+  const convois=await getAll(CONVOIS_STORE);
+  const positions=await getAll(POSITIONS_STORE);
+  const scans=await getAll(SCANS_STORE);
+
+  const data={
+    exportDate:new Date().toISOString(),
+    convois,
+    positions,
+    scans:scans.map(s=>({
+      scanId:s.scanId,
+      timestamp:s.timestamp,
+      convoiId:s.convoiId||'',
+      nomConvoi:s.nomConvoi||'',
+      nomCentre:s.nomCentre,
+      departement:s.departement,
+      commune:s.commune,
+      section:s.section,
+      livraisonComplete:s.livraisonComplete,
+      latitudeScan:s.latitudeScan,
+      longitudeScan:s.longitudeScan,
+      distanceCentre_m:s.distanceCentre_m,
+      verificationGps:s.verificationGps
+    }))
+  };
+
+  download(
+    'ELMS_journal_convois.json',
+    'application/json',
+    JSON.stringify(data,null,2)
+  );
+}
+
 async function refreshDashboard(){
   const scans=await getAll(SCANS_STORE),unique=new Set(scans.map(s=>s.cleCentre));$('kScannes').textContent=unique.size;
   $('kConformes').textContent=scans.filter(s=>s.verificationGps==='CONFORME').length;

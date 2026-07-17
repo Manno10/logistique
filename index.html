@@ -34,6 +34,45 @@
 
   <div id="message" class="message hidden"></div>
 
+  <section class="card convoy-card">
+    <div class="section-title">
+      <span class="step">C</span>
+      <h2>Convoi actif</h2>
+    </div>
+
+    <div id="activeConvoyEmpty">
+      <p class="muted">Configure le convoi avant de commencer les livraisons.</p>
+
+      <div class="form-grid">
+        <label class="field"><span>Identifiant du convoi</span><input id="convoyId" placeholder="Ex. NIP-MIR-01"></label>
+        <label class="field"><span>Nom du convoi</span><input id="convoyName" placeholder="Ex. Convoi Miragoâne 01"></label>
+        <label class="field"><span>Département</span><input id="convoyDepartment"></label>
+        <label class="field"><span>Commune</span><input id="convoyCommune"></label>
+        <label class="field"><span>Responsable</span><input id="convoyManager"></label>
+        <label class="field"><span>Téléphone</span><input id="convoyPhone" inputmode="tel"></label>
+      </div>
+
+      <button id="startMissionBtn" class="btn btn-primary">Démarrer la mission</button>
+    </div>
+
+    <div id="activeConvoyPanel" class="hidden">
+      <h3 id="activeConvoyTitle" class="centre-name"></h3>
+      <div id="activeConvoyMeta" class="meta-grid"></div>
+
+      <div class="mission-stats">
+        <div><strong id="convoyDelivered">0</strong><span>centres livrés</span></div>
+        <div><strong id="convoyPositions">0</strong><span>points GPS</span></div>
+        <div><strong id="convoyDuration">0 min</strong><span>durée</span></div>
+      </div>
+
+      <div class="actions">
+        <button id="recordPositionBtn" class="btn btn-outline">Enregistrer une position</button>
+        <button id="stopMissionBtn" class="btn btn-danger">Clôturer la mission</button>
+      </div>
+    </div>
+  </section>
+
+
   <section class="card">
     <div class="section-title">
       <span class="step">1</span>
@@ -134,9 +173,9 @@
     </div>
     <p class="muted">Les scans restent disponibles sans Internet. Ils pourront être synchronisés lorsque le backend sera connecté.</p>
     <div class="actions">
-      <button id="syncBtn" class="btn btn-primary">Synchroniser maintenant</button>
-<button id="exportCsvBtn" class="btn btn-outline">Exporter les scans en CSV</button>
+      <button id="exportCsvBtn" class="btn btn-outline">Exporter les scans en CSV</button>
       <button id="exportJsonBtn" class="btn btn-outline">Exporter en JSON</button>
+<button id="exportConvoyBtn" class="btn btn-outline">Exporter le journal du convoi</button>
       <button id="clearBtn" class="btn btn-danger">Effacer les scans locaux</button>
     </div>
     <div id="recentScans" class="recent-list"></div>

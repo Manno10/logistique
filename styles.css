@@ -34,3 +34,11 @@ input,textarea,select{width:100%;padding:11px;border:1px solid var(--line);borde
 .scan-row strong{display:block;margin-bottom:3px}.tag{display:inline-block;border-radius:99px;padding:3px 7px;font-size:10px;font-weight:bold;margin-top:4px}
 .tag.ok{background:#e7f6ed;color:var(--ok)}.tag.warn{background:#fff4dc;color:#8b5d00}.tag.bad{background:#fdebed;color:var(--bad)}
 @media(min-width:650px){.kpi-grid{grid-template-columns:repeat(4,1fr)}.gps-grid{grid-template-columns:1fr 1fr}}
+
+.form-grid{display:grid;grid-template-columns:1fr;gap:0 12px}
+.mission-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:14px 0}
+.mission-stats div{padding:10px;background:#f5f8fb;border-radius:9px;text-align:center}
+.mission-stats strong{display:block;font-size:20px;color:var(--navy)}
+.mission-stats span{font-size:10px;color:var(--muted)}
+.convoy-card{border-left:5px solid var(--blue)}
+@media(min-width:650px){.form-grid{grid-template-columns:1fr 1fr}}
